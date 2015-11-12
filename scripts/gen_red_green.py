@@ -4,11 +4,12 @@ import os
 import csv
 import re
 import HTML
-import datetime
+import time
 
 from optparse import OptionParser
 from launchpadlib.launchpad import Launchpad
 from pprint import pprint
+from datetime import datetime
 
 milestone126 = "1.26.0"
 reportedSeries = ["1.26", "2.0"]
@@ -51,6 +52,69 @@ validStatuses = [
     'postponed',
     'done']
 
+milestoneDates = {
+    "1.26": [
+        "1/12/2015",
+        "1/12/2015",
+        "1/12/2015",
+        "1/12/2015",
+        "15/12/2015",
+        "1/12/2015",
+        "15/12/2015",
+        "18/12/2015",
+        "5/1/2016"],
+    "2.0": [
+        "1/12/2015",
+        "1/12/2015",
+        "1/12/2015",
+        "1/12/2015",
+        "15/12/2015",
+        "1/12/2015",
+        "15/12/2015",
+        "18/12/2015",
+        "5/1/2016"]}
+
+releaseTablesDict = {
+    "1.26": [
+        ["3-Nov-2015", "Alpha 1"],
+        ["17-Nov-2015", "Alpha 2"],
+        ["1-Dec-2015", 'Beta 1\
+<list>\
+<li>Feature Freeze</li>\
+<li>All release notes complete</li>\
+</list>'],
+        ["8-Dec-2015", "Beta 2"],
+        ["15-Dec-2015", 'Beta 3\
+<list>\
+<li>Code freeze</li>\
+<li>Feature buddy signoff complete</li>\
+</list>'],
+        ["18-Dec-2015", "Documentation Complete"],
+        ["<i>22-Dec-2015</i>", "<i>Holiday Break</i>"],
+        ["<i>29-Dec-2015</i>", "<i>Holiday Break</i>"],
+        ["5-Jan-2016", "Beta 4"],
+        ["12-Jan-2016", "1.26 Released"], ],
+    "2.0": [
+        ["12-Jan-2016", "Alpha 1"],
+        ["26-Jan-2016", "Alpha 2"],
+        ["9-Feb-2016", "Alpha 3"],
+        ["16-Feb-2016", 'Beta 1\
+<list>\
+<li>Feature Freeze</li>\
+<li>All release notes complete</li>\
+</list>'],
+        ["23-Feb-2016", "Beta 2"],
+        ["1-Mar-2016", "Beta 3"],
+        ["8-Mar-2016", "Beta 4"],
+        ["15-Mar-2016", 'Beta 5\
+<list>\
+<li>Code freeze</li>\
+<li>Feature buddy signoff complete</li>\
+</list>'],
+        ["22-Mar-2016", "2.0 Named for inclusion in Xenial"],
+        ["25-Mar-2016", "Documentation Complete"],
+        ["21-Apr-2016", "2.0 Released in Xenial"], ] }
+
 def makeMainHeader():
     row = []
     for field in csv_fields:
@@ -83,10 +147,49 @@ def validStatus(status):
             return True
     return False
 
-def isDateTask(string):
-    return False
+def getDate(string):
+    strings = string.split("(")
+    if len(strings) != 2:
+        raise Exception("invalid format")
+    strings = strings[1].split(")")
+    if len(strings) != 2:
+        raise Exception("invalid format")
+    return strings[0]
 
-def addFeature(spec, t):
+def getDateStatus(date, status):
+    today = datetime.now()
+    if today > date:
+        return color_dict['overdue']
+
+    delta = date - today
+    if delta.days < 5:
+        return color_dict['near deadline']
+
+    return color_dict[status]
+
+def getStatusColor(strings, seriesName, itemIndex):
+    # Is this done or NA?
+    if isNATask(strings[0]):
+        return color_dict['n/a']
+
+    status = strings[1].strip()
+    if not validStatus(status):
+        raise Exception("Invalid status: %s" %status)
+    if status == 'done' or status == 'postponed':
+        return color_dict[status]
+
+    dateStr = getDate(strings[0])
+    if dateStr == "":
+        dateStr = milestoneDates[seriesName][itemIndex]
+
+    try:
+        targetDate = datetime.strptime(dateStr, "%d/%m/%Y")
+    except Exception as e:
+        print("Getting target date threw exception: %s" % e)
+    return getDateStatus(targetDate, status)
+        
+
+def addFeature(spec, t, seriesName):
     html_row = []
     html_row.append(HTML.TableCell("<a href=\"%s\">%s</a>" % (spec.web_link, spec.title)))
     if spec.assignee:
@@ -109,17 +212,14 @@ def addFeature(spec, t):
         if not ok:
             print("ERROR formatting feature: %s" % spec.title)
             return
-        if isNATask(strings[0]):
-            status = 'n/a'
-        elif isDateTask(strings[0]):
-            status = getDateStatus(strings[0])
-        else:
-            status = strings[1].strip()
-            if not validStatus(status):
-                print("Error reading status for task: %s, for %s" % (expectedWorkItems[i], spec.title))
+        try:
+            color = getStatusColor(strings, seriesName, i)
+        except:
+            print("Error reading status for task: %s, for %s" % (expectedWorkItems[i], spec.title))
+            return
 
         #print("TASK: %s ---- STATUS: %s" % (expectedWorkItems[i], strings[1]))
-        html_row.append(HTML.TableCell("", bgcolor=color_dict[status]))
+        html_row.append(HTML.TableCell("", bgcolor=color))
         i = i + 1
     t.rows.append(html_row)
 
@@ -142,33 +242,35 @@ def genKey():
 
     return str(t)
 
-def writeTop(f):
-    release_table = [
-        ["3-Nov-2015", "Alpha 1"],
-        ["17-Nov-2015", "Alpha 2"],
-        ["1-Dec-2015", 'Beta 1\
-<list>\
-<li>Feature Freeze</li>\
-<li>All release notes complete</li>\
-</list>'],
-        ["8-Dec-2015", "Beta 2"],
-        ["15-Dec-2015", 'Beta 3\
-<list>\
-<li>Code freeze</li>\
-<li>Feature buddy signoff complete</li>\
-</list>'],
-        ["18-Dec-2015", "Documentation Complete"],
-        ["<i>22-Dec-2015</i>", "<i>Holiday Break</i>"],
-        ["<i>29-Dec-2015</i>", "<i>Holiday Break</i>"],
-        ["5-Jan-2016", "Beta 4"],
-        ["12-Jan-2016", "1.26 Released"],
-    ]
-
+def writeSchedule(f, seriesName):
+    release_table = releaseTablesDict[seriesName]
     htmlcode = HTML.table(release_table, header_row=[HTML.TableCell("<b><center>Date</center</b>", bgcolor="DarkGray"), HTML.TableCell("<b><center>Milestone</center</b>", bgcolor="DarkGray")], 
         col_width=['200', '600'], col_align=['center', 'left'])
     f.write(htmlcode)
     f.write("<p>")
-        
+
+def writeSeriesFile(seriesName, series):
+    htmlFile = 'juju-release-%s.html' % seriesName
+    print("Writing html file: %s" % htmlFile)
+    f = open(htmlFile, 'w')
+    t = HTML.Table(header_row = makeMainHeader(), col_width=["300", "200", "90", "90", "90", "90", "90", "90", "90", "90", "90"])
+
+    specs = series.all_specifications
+    for spec in specs:
+        addFeature(spec, t, seriesName)
+
+    f.write("<h1>Juju %s Feature Tracker</h1>" % seriesName)
+    htmlCode = str(t)
+    f.write("<title>Juju %s Feature Tracker</title>" % seriesName)
+    f.write(htmlCode)
+    f.write("<p>")
+    f.write(genKey())
+    f.write("<p>")
+    f.write("<h2>Juju %s Release Schedule</h2>" % seriesName)
+    writeSchedule(f, seriesName)
+    f.write("<hr>")
+    timeNow = datetime.now()
+    f.write("<i>Last updated: %s</i>" % timeNow)
 
 def main(args):
 
@@ -177,8 +279,6 @@ def main(args):
     except:
         print "** ERROR: Could not open LP "
         sys.exit(-1)
-
-
 
     try:
         project = lp.projects["juju-core"]
@@ -191,31 +291,6 @@ def main(args):
         for ls in lpSeries:
             if ls.name == series:
                 writeSeriesFile(series, ls)
-
-
-def writeSeriesFile(seriesName, series):
-    htmlFile = 'juju-release-%s.html' % seriesName
-    print("Writing html file: %s" % htmlFile)
-    f = open(htmlFile, 'w')
-    t = HTML.Table(header_row = makeMainHeader(), col_width=["300", "200", "90", "90", "90", "90", "90", "90", "90", "90", "90"])
-
-    specs = series.all_specifications
-    for spec in specs:
-        addFeature(spec, t)
-
-    f.write("<h1>Juju %s Feature Tracker</h1>" % seriesName)
-    htmlCode = str(t)
-    f.write("<title>Juju %s Feature Tracker</title>" % seriesName)
-    f.write(htmlCode)
-    f.write("<p>")
-    f.write(genKey())
-    f.write("<p>")
-    f.write("<h2>Juju %s Release Schedule</h2>" % seriesName)
-    writeTop(f)
-    f.write("<hr>")
-    timeNow = datetime.datetime.now()
-    f.write("<i>Last updated: %s</i>" % timeNow)
-
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
