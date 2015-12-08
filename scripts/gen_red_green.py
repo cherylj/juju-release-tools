@@ -5,14 +5,14 @@ import csv
 import re
 import HTML
 import time
+import collections
 
 from optparse import OptionParser
 from launchpadlib.launchpad import Launchpad
 from pprint import pprint
 from datetime import datetime
 
-milestone126 = "1.26.0"
-reportedSeries = ["1.26", "2.0"]
+reportedSeries = ["2.0"]
 expectedWorkItems = [
     'feature one-pager approved',
     'design spec',
@@ -36,6 +36,7 @@ color_dict = {
 csv_fields = [
     'Feature',
     'Owner',
+    'Milestone',
     'One Pager',
     'Design Spec',
     'Code Complete',
@@ -53,57 +54,48 @@ validStatuses = [
     'done']
 
 milestoneDates = {
-    "1.26": [
-        "1/12/2015",
-        "1/12/2015",
-        "1/12/2015",
-        "1/12/2015",
-        "15/12/2015",
-        "1/12/2015",
-        "15/12/2015",
-        "18/12/2015",
-        "5/1/2016"],
     "2.0": [
-        "1/12/2015",
-        "1/12/2015",
-        "1/12/2015",
-        "1/12/2015",
-        "15/12/2015",
-        "1/12/2015",
-        "15/12/2015",
-        "18/12/2015",
-        "5/1/2016"]}
+        "16/2/2016",
+        "16/2/2016",
+        "16/2/2016",
+        "16/2/2016",
+        "23/2/2016",
+        "16/2/2016",
+        "15/3/2016",
+        "25/3/2016",
+        "14/4/2016"]}
+
+developmentDates = {
+    "1.26-alpha2": "1/12/2015",
+    "2.0-alpha1": "8/12/2015",
+    "2.0-alpha2": "15/12/2015",
+    "2.0-alpha3": "12/1/2016",
+    "2.0-alpha4": "26/1/2016",
+    "2.0-alpha5": "9/2/2016",
+    "2.0-beta1": "16/2/2016",
+    "2.0-beta2": "23/2/2016",
+    "2.0-beta3": "1/3/2016",
+    "2.0-beta4": "8/3/2016",
+    "2.0-beta5": "15/3/2016"}
 
 releaseTablesDict = {
-    "1.26": [
-        ["3-Nov-2015", "Alpha 1"],
-        ["17-Nov-2015", "Alpha 2"],
-        ["1-Dec-2015", 'Beta 1\
-<list>\
-<li>Feature Freeze</li>\
-<li>All release notes complete</li>\
-</list>'],
-        ["8-Dec-2015", "Beta 2"],
-        ["15-Dec-2015", 'Beta 3\
-<list>\
-<li>Code freeze</li>\
-<li>Feature buddy signoff complete</li>\
-</list>'],
-        ["18-Dec-2015", "Documentation Complete"],
+    "2.0": [
+        ["8-Dec-2015", "Alpha 1"],
+        ["15-Dec-2015", "Alpha 2"],
         ["<i>22-Dec-2015</i>", "<i>Holiday Break</i>"],
         ["<i>29-Dec-2015</i>", "<i>Holiday Break</i>"],
-        ["5-Jan-2016", "Beta 4"],
-        ["12-Jan-2016", "1.26 Released"], ],
-    "2.0": [
-        ["12-Jan-2016", "Alpha 1"],
-        ["26-Jan-2016", "Alpha 2"],
-        ["9-Feb-2016", "Alpha 3"],
+        ["12-Jan-2016", "Alpha 3"],
+        ["26-Jan-2016", "Alpha 4"],
+        ["9-Feb-2016", "Alpha 5"],
         ["16-Feb-2016", 'Beta 1\
 <list>\
 <li>Feature Freeze</li>\
 <li>All release notes complete</li>\
 </list>'],
-        ["23-Feb-2016", "Beta 2"],
+        ["23-Feb-2016", "Beta 2\
+<list>\
+<li>CI tests complete</li>\
+</list>"],
         ["1-Mar-2016", "Beta 3"],
         ["8-Mar-2016", "Beta 4"],
         ["15-Mar-2016", 'Beta 5\
@@ -114,6 +106,7 @@ releaseTablesDict = {
         ["22-Mar-2016", "2.0 Named for inclusion in Xenial"],
         ["25-Mar-2016", "Documentation Complete"],
         ["21-Apr-2016", "2.0 Released in Xenial"], ] }
+
 
 def makeMainHeader():
     row = []
@@ -167,7 +160,7 @@ def getDateStatus(date, status):
 
     return color_dict[status]
 
-def getStatusColor(strings, seriesName, itemIndex):
+def getStatusColor(strings, seriesName, itemIndex, milestone):
     # Is this done or NA?
     if isNATask(strings[0]):
         return color_dict['n/a']
@@ -180,7 +173,11 @@ def getStatusColor(strings, seriesName, itemIndex):
 
     dateStr = getDate(strings[0])
     if dateStr == "":
-        dateStr = milestoneDates[seriesName][itemIndex]
+        #If this is a development task, use the milestone
+        if itemIndex < 4 or itemIndex == 5:
+            dateStr = developmentDates[milestone]
+        else:
+            dateStr = milestoneDates[seriesName][itemIndex]
 
     try:
         targetDate = datetime.strptime(dateStr, "%d/%m/%Y")
@@ -189,13 +186,18 @@ def getStatusColor(strings, seriesName, itemIndex):
     return getDateStatus(targetDate, status)
         
 
-def addFeature(spec, t, seriesName):
+def addFeature(spec, row_map, seriesName):
     html_row = []
     html_row.append(HTML.TableCell("<a href=\"%s\">%s</a>" % (spec.web_link, spec.title)))
     if spec.assignee:
         html_row.append(HTML.TableCell("<center>%s</center>" % spec.assignee.display_name))
     else:
         html_row.append(HTML.TableCell(""))
+
+    milestone = "2.0-beta1"
+    if spec.milestone:
+        milestone = spec.milestone.name
+    html_row.append(HTML.TableCell("<center>%s</center>" % milestone))
 
     work_items = spec.workitems_text
     items = work_items.split("\n")
@@ -213,7 +215,7 @@ def addFeature(spec, t, seriesName):
             print("ERROR formatting feature: %s" % spec.title)
             return
         try:
-            color = getStatusColor(strings, seriesName, i)
+            color = getStatusColor(strings, seriesName, i, milestone)
         except:
             print("Error reading status for task: %s, for %s" % (expectedWorkItems[i], spec.title))
             return
@@ -221,7 +223,7 @@ def addFeature(spec, t, seriesName):
         #print("TASK: %s ---- STATUS: %s" % (expectedWorkItems[i], strings[1]))
         html_row.append(HTML.TableCell("", bgcolor=color))
         i = i + 1
-    t.rows.append(html_row)
+    row_map[milestone].append(html_row)
 
 def genKey():
     rows = [
@@ -253,11 +255,28 @@ def writeSeriesFile(seriesName, series):
     htmlFile = 'juju-release-%s.html' % seriesName
     print("Writing html file: %s" % htmlFile)
     f = open(htmlFile, 'w')
-    t = HTML.Table(header_row = makeMainHeader(), col_width=["300", "200", "90", "90", "90", "90", "90", "90", "90", "90", "90"])
+    t = HTML.Table(header_row = makeMainHeader(), col_width=["300", "200", "100", "90", "90", "90", "90", "90", "90", "90", "90", "90"])
+
+    release_map20 = collections.OrderedDict()
+    release_map20["1.26-alpha2"] = []
+    release_map20["2.0-alpha1"] = []
+    release_map20["2.0-alpha2"] = []
+    release_map20["2.0-alpha3"] = []
+    release_map20["2.0-alpha4"] = []
+    release_map20["2.0-alpha5"] = []
+    release_map20["2.0-beta1"] = []
+    release_map20["2.0-beta2"] = []
+    release_map20["2.0-beta3"] = []
+    release_map20["2.0-beta4"] = []
+    release_map20["2.0-beta5"] = []
 
     specs = series.all_specifications
     for spec in specs:
-        addFeature(spec, t, seriesName)
+        addFeature(spec, release_map20, seriesName)
+
+    for rows in release_map20.values():
+        for html_row in rows:
+            t.rows.append(html_row)
 
     f.write("<h1>Juju %s Feature Tracker</h1>" % seriesName)
     htmlCode = str(t)
@@ -267,6 +286,7 @@ def writeSeriesFile(seriesName, series):
     f.write(genKey())
     f.write("<p>")
     f.write("<h2>Juju %s Release Schedule</h2>" % seriesName)
+    f.write("<i>All dates are code cut-off dates.  Releases will appear in streams a few days after the cutoff.</i><p>")
     writeSchedule(f, seriesName)
     f.write("<hr>")
     timeNow = datetime.now()
