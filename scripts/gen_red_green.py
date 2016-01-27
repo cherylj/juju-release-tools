@@ -67,11 +67,10 @@ milestoneDates = {
 
 developmentDates = {
     "1.26-alpha2": "1/12/2015",
-    "2.0-alpha1": "8/12/2015",
-    "2.0-alpha2": "15/12/2015",
-    "2.0-alpha3": "12/1/2016",
-    "2.0-alpha4": "26/1/2016",
-    "2.0-alpha5": "9/2/2016",
+    "1.26-alpha3": "16/12/2015",
+    "2.0-alpha1": "12/1/2016",
+    "2.0-alpha2": "2/2/2016",
+    "2.0-alpha3": "9/2/2016",
     "2.0-beta1": "16/2/2016",
     "2.0-beta2": "23/2/2016",
     "2.0-beta3": "1/3/2016",
@@ -80,13 +79,15 @@ developmentDates = {
 
 releaseTablesDict = {
     "2.0": [
-        ["8-Dec-2015", "Alpha 1"],
-        ["15-Dec-2015", "Alpha 2"],
+        ["15-Dec-2015", "1.26 Alpha 3\
+<p><i>This release is called 1.26-alpha3, as the command and rename changes that characterize the 2.0 release will not be ready in time, but \
+additional stakeholder requested features are ready for testing.</i>"],
         ["<i>22-Dec-2015</i>", "<i>Holiday Break</i>"],
         ["<i>29-Dec-2015</i>", "<i>Holiday Break</i>"],
-        ["12-Jan-2016", "Alpha 3"],
-        ["26-Jan-2016", "Alpha 4"],
-        ["9-Feb-2016", "Alpha 5"],
+        ["12-Jan-2016", "Alpha 1"],
+        ["2-Feb-2016", "Alpha 2\
+        <p><i>Date pushed out a week to get the MAAS-spaces work landed</i>"],
+        ["9-Feb-2016", "Alpha 3"],
         ["16-Feb-2016", 'Beta 1\
 <list>\
 <li>Feature Freeze</li>\
@@ -252,18 +253,17 @@ def writeSchedule(f, seriesName):
     f.write("<p>")
 
 def writeSeriesFile(seriesName, series):
-    htmlFile = 'juju-release-%s.html' % seriesName
+    htmlFile = 'juju-features-20.html'
     print("Writing html file: %s" % htmlFile)
     f = open(htmlFile, 'w')
     t = HTML.Table(header_row = makeMainHeader(), col_width=["300", "200", "100", "90", "90", "90", "90", "90", "90", "90", "90", "90"])
 
     release_map20 = collections.OrderedDict()
     release_map20["1.26-alpha2"] = []
+    release_map20["1.26-alpha3"] = []
     release_map20["2.0-alpha1"] = []
     release_map20["2.0-alpha2"] = []
     release_map20["2.0-alpha3"] = []
-    release_map20["2.0-alpha4"] = []
-    release_map20["2.0-alpha5"] = []
     release_map20["2.0-beta1"] = []
     release_map20["2.0-beta2"] = []
     release_map20["2.0-beta3"] = []
@@ -278,9 +278,11 @@ def writeSeriesFile(seriesName, series):
         for html_row in rows:
             t.rows.append(html_row)
 
-    f.write("<h1>Juju %s Feature Tracker</h1>" % seriesName)
     htmlCode = str(t)
     f.write("<title>Juju %s Feature Tracker</title>" % seriesName)
+    f.write("<h1>Juju %s Feature Tracker</h1>" % seriesName)
+    f.write("<h2>All dates and features are subject to change and do not represent a committment from the Juju Core team.</h2>")
+    f.write("<a href=\"https://docs.google.com/document/d/1D4hOenHkJN5HG-bnjJOJjjjuW1xMQfPmWhNtq76m4H4/edit#heading=h.2o2sucn297cp\">Information on how to track features</a><p>")
     f.write(htmlCode)
     f.write("<p>")
     f.write(genKey())
