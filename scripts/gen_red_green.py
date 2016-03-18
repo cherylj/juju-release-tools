@@ -59,9 +59,9 @@ milestoneDates = {
         "16/2/2016",
         "16/2/2016",
         "16/2/2016",
-        "23/2/2016",
+        "21/3/2016",
         "16/2/2016",
-        "15/3/2016",
+        "21/3/2016",
         "25/3/2016",
         "14/4/2016"]}
 
@@ -69,44 +69,46 @@ developmentDates = {
     "1.26-alpha2": "1/12/2015",
     "1.26-alpha3": "16/12/2015",
     "2.0-alpha1": "12/1/2016",
-    "2.0-alpha2": "2/2/2016",
-    "2.0-alpha3": "9/2/2016",
+    "2.0-alpha2": "9/2/2016",
     "2.0-beta1": "16/2/2016",
-    "2.0-beta2": "23/2/2016",
-    "2.0-beta3": "1/3/2016",
-    "2.0-beta4": "8/3/2016",
-    "2.0-beta5": "15/3/2016"}
+    "2.0-beta2": "10/3/2016",
+    "2.0-beta3": "21/3/2016",
+    "2.0-beta4": "7/4/2016"}
 
 releaseTablesDict = {
     "2.0": [
-        ["15-Dec-2015", "1.26 Alpha 3\
+        ["15-Dec-2015", "<b>1.26 Alpha 3 code cut off</b>\
 <p><i>This release is called 1.26-alpha3, as the command and rename changes that characterize the 2.0 release will not be ready in time, but \
 additional stakeholder requested features are ready for testing.</i>"],
         ["<i>22-Dec-2015</i>", "<i>Holiday Break</i>"],
         ["<i>29-Dec-2015</i>", "<i>Holiday Break</i>"],
-        ["12-Jan-2016", "Alpha 1"],
-        ["2-Feb-2016", "Alpha 2\
-        <p><i>Date pushed out a week to get the MAAS-spaces work landed</i>"],
-        ["9-Feb-2016", "Alpha 3"],
-        ["16-Feb-2016", 'Beta 1\
+        ["12-Jan-2016", "<b>Alpha 1 code cut off</b>"],
+        ["9-Feb-2016", "<b>Alpha 2 code cut off</b>"],
+        ["16-Feb-2016", '<b>Beta 1 code cut off</b>\
 <list>\
-<li>Feature Freeze</li>\
+<li>Feature Freeze (Except <a href="https://bugs.launchpad.net/ubuntu/+source/juju-core/+bug/1545913">FFe items</a>)</li>\
 <li>All release notes complete</li>\
 </list>'],
-        ["23-Feb-2016", "Beta 2\
+        ["10-Mar-2016", "<b>Beta 2 code cut off</b>"],
+        ["21-Mar-2016", '<b>Beta 3 code cut off</b>\
 <list>\
-<li>CI tests complete</li>\
-</list>"],
-        ["1-Mar-2016", "Beta 3"],
-        ["8-Mar-2016", "Beta 4"],
-        ["15-Mar-2016", 'Beta 5\
-<list>\
-<li>Code freeze</li>\
+<li>Target release date:  24-Mar-2016</li>\
+<li>Feature freeze for <a href="https://bugs.launchpad.net/ubuntu/+source/juju-core/+bug/1545913">FFe items</a></li>\
 <li>Feature buddy signoff complete</li>\
+<li>CI tests complete</li>\
 </list>'],
-        ["22-Mar-2016", "2.0 Named for inclusion in Xenial"],
-        ["25-Mar-2016", "Documentation Complete"],
-        ["21-Apr-2016", "2.0 Released in Xenial"], ] }
+        ["25-Mar-2016", "<b>Documentation Complete</b>"],
+        ["4-Apr-2016", "<b>Beta 4 code cut off</b>\
+<list>\
+<li>Target release date:  7-Apr-2016</li>\
+<li>Bugfix only</li>\
+</list>"],
+        ["11-Apr-2016", "<b>2.0.0 Release code cut off</b>\
+<list>\
+<li>Target release date:  14-Apr-2016 (for inclusion in Xenial)</li>\
+<li>Critical Bugfix only</li>\
+</list>"],
+        ["21-Apr-2016", "<b>Xenial Xerus released(with Juju 2.0.0)</b>"], ] }
 
 
 def makeMainHeader():
@@ -168,6 +170,7 @@ def getStatusColor(strings, seriesName, itemIndex, milestone):
 
     status = strings[1].strip()
     if not validStatus(status):
+        print("Not a valid status: %s" % status)
         raise Exception("Invalid status: %s" %status)
     if status == 'done' or status == 'postponed':
         return color_dict[status]
@@ -219,6 +222,7 @@ def addFeature(spec, row_map, seriesName):
             color = getStatusColor(strings, seriesName, i, milestone)
         except:
             print("Error reading status for task: %s, for %s" % (expectedWorkItems[i], spec.title))
+            print("string was: %s" % strings[0])
             return
 
         #print("TASK: %s ---- STATUS: %s" % (expectedWorkItems[i], strings[1]))
@@ -263,7 +267,6 @@ def writeSeriesFile(seriesName, series):
     release_map20["1.26-alpha3"] = []
     release_map20["2.0-alpha1"] = []
     release_map20["2.0-alpha2"] = []
-    release_map20["2.0-alpha3"] = []
     release_map20["2.0-beta1"] = []
     release_map20["2.0-beta2"] = []
     release_map20["2.0-beta3"] = []
