@@ -6,13 +6,28 @@ import re
 import HTML
 import time
 import collections
+import yaml
 
 from optparse import OptionParser
+from argparse import ArgumentParser
 from launchpadlib.launchpad import Launchpad
 from pprint import pprint
-from datetime import datetime
+from datetime import datetime, timedelta
+from natsort import natsorted
 
-reportedSeries = ["2.0"]
+# workItemsDelta is the number of days past the target milestone date that
+# a particular work items is due.
+workItemsDelta = {
+    'feature one-pager approved': 0,
+    'design spec': 0,
+    'implementation': 0,
+    'demo': 0,
+    'ci tests': 14,
+    'release notes': 0,
+    'stakeholder signoff': 7,
+    'documentation draft': 14,
+    'documentation complete': 21}
+
 expectedWorkItems = [
     'feature one-pager approved',
     'design spec',
@@ -45,71 +60,13 @@ csv_fields = [
     'Release Notes',
     'Stakeholder Signoff',
     'Documentation Submitted',
-    'Documentation Published']
+    'Documentation Complete']
 
 validStatuses = [
     'inprogress',
     'todo',
     'postponed',
     'done']
-
-milestoneDates = {
-    "2.0": [
-        "16/2/2016",
-        "16/2/2016",
-        "16/2/2016",
-        "16/2/2016",
-        "21/3/2016",
-        "16/2/2016",
-        "21/3/2016",
-        "25/3/2016",
-        "14/4/2016"]}
-
-developmentDates = {
-    "1.26-alpha2": "1/12/2015",
-    "1.26-alpha3": "16/12/2015",
-    "2.0-alpha1": "12/1/2016",
-    "2.0-alpha2": "9/2/2016",
-    "2.0-beta1": "16/2/2016",
-    "2.0-beta2": "10/3/2016",
-    "2.0-beta3": "21/3/2016",
-    "2.0-beta4": "7/4/2016"}
-
-releaseTablesDict = {
-    "2.0": [
-        ["15-Dec-2015", "<b>1.26 Alpha 3 code cut off</b>\
-<p><i>This release is called 1.26-alpha3, as the command and rename changes that characterize the 2.0 release will not be ready in time, but \
-additional stakeholder requested features are ready for testing.</i>"],
-        ["<i>22-Dec-2015</i>", "<i>Holiday Break</i>"],
-        ["<i>29-Dec-2015</i>", "<i>Holiday Break</i>"],
-        ["12-Jan-2016", "<b>Alpha 1 code cut off</b>"],
-        ["9-Feb-2016", "<b>Alpha 2 code cut off</b>"],
-        ["16-Feb-2016", '<b>Beta 1 code cut off</b>\
-<list>\
-<li>Feature Freeze (Except <a href="https://bugs.launchpad.net/ubuntu/+source/juju-core/+bug/1545913">FFe items</a>)</li>\
-<li>All release notes complete</li>\
-</list>'],
-        ["10-Mar-2016", "<b>Beta 2 code cut off</b>"],
-        ["21-Mar-2016", '<b>Beta 3 code cut off</b>\
-<list>\
-<li>Target release date:  24-Mar-2016</li>\
-<li>Feature freeze for <a href="https://bugs.launchpad.net/ubuntu/+source/juju-core/+bug/1545913">FFe items</a></li>\
-<li>Feature buddy signoff complete</li>\
-<li>CI tests complete</li>\
-</list>'],
-        ["25-Mar-2016", "<b>Documentation Complete</b>"],
-        ["4-Apr-2016", "<b>Beta 4 code cut off</b>\
-<list>\
-<li>Target release date:  7-Apr-2016</li>\
-<li>Bugfix only</li>\
-</list>"],
-        ["11-Apr-2016", "<b>2.0.0 Release code cut off</b>\
-<list>\
-<li>Target release date:  14-Apr-2016 (for inclusion in Xenial)</li>\
-<li>Critical Bugfix only</li>\
-</list>"],
-        ["21-Apr-2016", "<b>Xenial Xerus released(with Juju 2.0.0)</b>"], ] }
-
 
 def makeMainHeader():
     row = []
@@ -163,8 +120,7 @@ def getDateStatus(date, status):
 
     return color_dict[status]
 
-def getStatusColor(strings, seriesName, itemIndex, milestone):
-    # Is this done or NA?
+def getStatusColor(strings, itemName, milestone):
     if isNATask(strings[0]):
         return color_dict['n/a']
 
@@ -177,20 +133,25 @@ def getStatusColor(strings, seriesName, itemIndex, milestone):
 
     dateStr = getDate(strings[0])
     if dateStr == "":
-        #If this is a development task, use the milestone
-        if itemIndex < 4 or itemIndex == 5:
-            dateStr = developmentDates[milestone]
-        else:
-            dateStr = milestoneDates[seriesName][itemIndex]
+        # There was no date specified inline, use the date from 
+        # the milestone plus the offset.
+        targetDate = milestone.date_targeted + timedelta(days=workItemsDelta[itemName])
+    else:
+        try:
+            targetDate = datetime.strptime(dateStr, "%d/%m/%Y")
+        except Exception as e:
+             print("Getting target date threw exception: %s" % e)
 
-    try:
-        targetDate = datetime.strptime(dateStr, "%d/%m/%Y")
-    except Exception as e:
-        print("Getting target date threw exception: %s" % e)
     return getDateStatus(targetDate, status)
         
 
 def addFeature(spec, row_map, seriesName):
+    if spec.milestone:
+        milestone = spec.milestone
+    else:
+        print("Unable to find milestone for spec: %s (link: %s)" % (spec.title, spec.web_link))
+        return
+
     html_row = []
     html_row.append(HTML.TableCell("<a href=\"%s\">%s</a>" % (spec.web_link, spec.title)))
     if spec.assignee:
@@ -198,37 +159,39 @@ def addFeature(spec, row_map, seriesName):
     else:
         html_row.append(HTML.TableCell(""))
 
-    milestone = "2.0-beta1"
-    if spec.milestone:
-        milestone = spec.milestone.name
-    html_row.append(HTML.TableCell("<center>%s</center>" % milestone))
+
+    html_row.append(HTML.TableCell("<center>%s</center>" % milestone.name))
 
     work_items = spec.workitems_text
     items = work_items.split("\n")
+
     #skip first header
     items = items[1:]
     i = 0
     for item in items:
         strings = item.lower().split(":")
         if len(strings) != 2:
-            print("ERROR formatting feature: %s" % spec.title)
+            print("ERROR formatting feature: %s (link: %s)" % (spec.title, spec.web_link))
             return
 
         task, ok = correctTask(strings[0], i)
         if not ok:
-            print("ERROR formatting feature: %s" % spec.title)
+            print("ERROR formatting feature: %s (link: %s)" % (spec.title, spec.web_link))
             return
         try:
-            color = getStatusColor(strings, seriesName, i, milestone)
-        except:
+            color = getStatusColor(strings, task, milestone)
+        except Exception as e:
             print("Error reading status for task: %s, for %s" % (expectedWorkItems[i], spec.title))
             print("string was: %s" % strings[0])
+            print("exception was: %s" % e)
             return
 
-        #print("TASK: %s ---- STATUS: %s" % (expectedWorkItems[i], strings[1]))
         html_row.append(HTML.TableCell("", bgcolor=color))
         i = i + 1
-    row_map[milestone].append(html_row)
+
+    features = row_map.get(milestone.name, [])
+    features.append(html_row)
+    row_map[milestone.name] = features
 
 def genKey():
     rows = [
@@ -249,35 +212,50 @@ def genKey():
 
     return str(t)
 
-def writeSchedule(f, seriesName):
-    release_table = releaseTablesDict[seriesName]
-    htmlcode = HTML.table(release_table, header_row=[HTML.TableCell("<b><center>Date</center</b>", bgcolor="DarkGray"), HTML.TableCell("<b><center>Milestone</center</b>", bgcolor="DarkGray")], 
+def writeSchedule(f, trunk):
+
+    milestones = trunk.all_milestones
+    releases = {}
+    for ms in milestones:
+        releases[ms.date_targeted] = ms.name
+
+    # sort by target date
+    keys = releases.keys()
+    sorted_keys = sorted(keys)
+
+    release_table = []
+    for k in sorted_keys:
+       release_table.append([k.strftime("%Y-%m-%d"), releases[k]])
+
+    t = HTML.table(release_table, header_row=[HTML.TableCell("<b><center>Date</center</b>", bgcolor="DarkGray"), HTML.TableCell("<b><center>Milestone</center</b>", bgcolor="DarkGray")], 
         col_width=['200', '600'], col_align=['center', 'left'])
-    f.write(htmlcode)
+        
+    f.write(t)
     f.write("<p>")
 
-def writeSeriesFile(seriesName, series):
-    htmlFile = 'juju-features-20.html'
-    print("Writing html file: %s" % htmlFile)
-    f = open(htmlFile, 'w')
+
+def writeSeriesFile(seriesName, series, trunk):
+    filename = "juju-features-%s.html" % seriesName
+    print("writing to filename: %s" % filename)
+    f = open(filename, 'w')
     t = HTML.Table(header_row = makeMainHeader(), col_width=["300", "200", "100", "90", "90", "90", "90", "90", "90", "90", "90", "90"])
 
-    release_map20 = collections.OrderedDict()
-    release_map20["1.26-alpha2"] = []
-    release_map20["1.26-alpha3"] = []
-    release_map20["2.0-alpha1"] = []
-    release_map20["2.0-alpha2"] = []
-    release_map20["2.0-beta1"] = []
-    release_map20["2.0-beta2"] = []
-    release_map20["2.0-beta3"] = []
-    release_map20["2.0-beta4"] = []
-    release_map20["2.0-beta5"] = []
+    # make an ordered map of releases so we can print the blueprints out
+    # in order of target milestone.
+    release_map = collections.OrderedDict()
 
     specs = series.all_specifications
     for spec in specs:
-        addFeature(spec, release_map20, seriesName)
+        addFeature(spec, release_map, seriesName)
 
-    for rows in release_map20.values():
+    # Sort the release_map by milestone
+    keys = release_map.keys()
+    sorted_keys = natsorted(keys)
+    sorted_map = collections.OrderedDict()
+    for k in sorted_keys:
+        sorted_map[k] = release_map[k]
+
+    for rows in sorted_map.values():
         for html_row in rows:
             t.rows.append(html_row)
 
@@ -292,30 +270,48 @@ def writeSeriesFile(seriesName, series):
     f.write("<p>")
     f.write("<h2>Juju %s Release Schedule</h2>" % seriesName)
     f.write("<i>All dates are code cut-off dates.  Releases will appear in streams a few days after the cutoff.</i><p>")
-    writeSchedule(f, seriesName)
+    writeSchedule(f, trunk)
     f.write("<hr>")
     timeNow = datetime.now()
     f.write("<i>Last updated: %s</i>" % timeNow)
 
 def main(args):
+    parser = ArgumentParser("Generate red / green chart for release tracking")
+    parser.add_argument('series')
+    args = parser.parse_args()
+
+    series = args.series
 
     try:
         lp = Launchpad.login_with("pypypy", "production", version="devel")
     except:
         print "** ERROR: Could not open LP "
-        sys.exit(-1)
+        sys.exit(1)
 
     try:
         project = lp.projects["juju-core"]
     except KeyError:
         print "** ERROR: Project name does not exist: juju-core"
-        quit()
+        sys.exit(1)
 
-    for series in reportedSeries:
-        lpSeries = project.series
-        for ls in lpSeries:
-            if ls.name == series:
-                writeSeriesFile(series, ls)
+    # We need to find both the trunk and the specified series
+    found = False
+    lpSeries = project.series
+    for ls in lpSeries:
+        if ls.name == "trunk":
+            trunk = ls
+        if ls.name == series:
+            repSeries = ls
+            found = True
+
+
+    if not found:
+        print "** ERROR: Unable to find series: %s" % series
+        sys.exit(1)
+
+    writeSeriesFile(series, repSeries, trunk)
+            
+
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
